@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BrickBuilder 3D - Technic & Stacking</title>
+    <!-- Tailwind CSS CDN per als estils de la interfície -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome CDN per a les icones -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        /* Estils interns per garantir fons fosc i panells personalitzats */
+        body, html {
+            margin: 0; padding: 0; height: 100%; overflow: hidden;
+            background-color: #0a0a0a; color: #e5e5e5;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+        
+        .sidebar-scroll::-webkit-scrollbar { width: 4px; }
+        .sidebar-scroll::-webkit-scrollbar-track { background: #171717; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: #404040; border-radius: 10px; }
+        
+        .color-dot {
+            width: 24px; height: 24px; border-radius: 50%; cursor: pointer;
+            transition: transform 0.2s; border: 2px solid transparent;
+        }
+        .color-dot:hover { transform: scale(1.2); }
+        .color-dot.active { border-color: white; transform: scale(1.1); }
+
+        .category-pill {
+            padding: 4px 10px; border-radius: 20px; font-size: 9px;
+            font-weight: 800; text-transform: uppercase;
+            background: #262626; color: #a3a3a3; cursor: pointer;
+            transition: all 0.2s; white-space: nowrap;
+        }
+        .category-pill.active { background: #3b82f6; color: white; }
+
+        #baseplateStatus {
+            position: absolute; top: 20px; left: 340px;
+            background: rgba(0,0,0,0.7); padding: 6px 12px;
+            border-radius: 6px; border: 1px solid #444;
+            font-size: 10px; font-weight: bold; color: #888;
+            pointer-events: none; z-index: 50;
+        }
+        #baseplateStatus.active { color: #22c55e; border-color: #22c55e; }
+    </style>
+</head>
+<body class="flex h-screen w-full">
+
+    <div id="baseplateStatus">BASEPLATE: OFF (Prems 'M')</div>
+
+    <!-- Barra lateral esquerra -->
+    <aside class="w-80 bg-neutral-900 border-r border-neutral-800 flex flex-col z-20 shadow-2xl">
+        <div class="p-5 border-b border-neutral-800 flex items-center justify-between">
+            <h1 class="text-xl font-bold flex items-center gap-2 text-white">
+                <i class="fas fa-cube text-blue-500"></i> BrickBuilder
+            </h1>
+        </div>
+
+        <div class="flex border-b border-neutral-800">
+            <button onclick="switchTab('library')" id="btnLib" class="flex-1 py-3 text-[10px] font-bold uppercase tracking-widest border-b-2 border-blue-500 text-white">Llibreria</button>
+            <button onclick="switchTab('inventory')" id="btnInventory" class="flex-1 py-3 text-[10px] font-bold uppercase tracking-widest border-b-2 border-transparent text-neutral-500">Inventari</button>
+        </div>
+
+        <!-- Pestanya: Llibreria de peces -->
+        <div id="tabLibrary" class="flex flex-col flex-1 overflow-hidden">
+            <div class="p-4 border-b border-neutral-800 bg-black/20">
+                <div class="flex flex-wrap gap-2 mb-4 sidebar-scroll overflow-x-auto pb-2" id="categoryFilters">
+                    <span class="category-pill active" data-cat="totes">Totes</span>
+                    <span class="category-pill" data-cat="bricks">Bricks</span>
+                    <span class="category-pill" data-cat="technic">Technic</span>
+                    <span class="category-pill" data-cat="plates">Plates</span>
+                    <span class="category-pill" data-cat="axles">Eixos/Rodes</span>
+                </div>
+                <p class="text-[10px] text-neutral-500 font-bold mb-2 uppercase tracking-tighter">Controls</p>
+                <ul class="text-[10px] text-neutral-400 space-y-1">
+                    <li><i class="fas fa-mouse-pointer mr-1 text-pink-400"></i> <span class="font-bold text-white">Ctrl + Clic</span> per selecció múltiple</li>
+                    <li><i class="fas fa-sync mr-1 text-yellow-400"></i> <span class="font-bold text-white">'R'</span> Rotar Y / <span class="font-bold text-white">'X'</span> Rotar X</li>
+                    <li><i class="fas fa-arrows-v mr-1 text-green-400"></i> Fletxes <span class="font-bold text-white">↑ ↓</span> moure vertical</li>
+                    <li><i class="fas fa-border-all mr-1 text-purple-400"></i> Prems <span class="font-bold text-white">'M'</span> Baseplate</li>
+                </ul>
+            </div>
+
+            <div class="flex-1 overflow-y-auto p-4 sidebar-scroll">
+                <div id="brickLibrary" class="grid grid-cols-2 gap-3"></div>
+            </div>
+        </div>
+
+        <!-- Pestanya: Inventari -->
+        <div id="tabInventory" class="hidden flex-1 overflow-y-auto p-4 sidebar-scroll text-center py-10">
+            <div id="projectList" class="flex flex-col gap-3 mt-4">
+                <p class="text-xs text-neutral-500 italic">Aquí sortirà l'inventari del projecte.</p>
+            </div>
+        </div>
+
+        <div class="p-4 border-t border-neutral-800">
+            <button id="saveBtn" class="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2">
+                <i class="fas fa-save"></i> GUARDAR PROJECTE
+            </button>
+        </div>
+    </aside>
+
+    <!-- Àrea Principal (Canvas 3D) -->
+    <main class="flex-1 relative bg-[#050505]">
+        
+        <!-- Panell de selecció emergent -->
+        <div id="selectionPanel" class="hidden absolute bottom-8 left-1/2 -translate-x-1/2 z-10 bg-neutral-900/95 backdrop-blur-xl p-5 rounded-2xl border border-neutral-700 shadow-2xl flex flex-col gap-4 min-w-[300px]">
+            <div class="flex items-center justify-between border-b border-neutral-800 pb-3">
+                <div class="flex items-center gap-3">
+                    <div id="selPreview" class="w-8 h-5 rounded"></div>
+                    <div>
+                        <p id="selName" class="text-xs font-bold text-white"></p>
+                    </div>
+                </div>
+                <button onclick="deleteSelected()" class="text-red-500 p-2 rounded-lg hover:bg-red-500/10">
+                    <i class="fas fa-trash-alt"></i>
+                </button>
+            </div>
+            <div id="colorPicker" class="flex gap-2 flex-wrap"></div>
+        </div>
+
+        <!-- Contenidor WebGL -->
+        <div id="canvasContainer" class="w-full h-full"></div>
+
+        <!-- Panell superior dret (Preu) -->
+        <div class="absolute top-6 right-6 z-10 text-right space-y-2">
+            <div class="bg-neutral-900/90 backdrop-blur-md p-5 rounded-2xl border border-neutral-700/50 shadow-2xl">
+                <p class="text-[9px] text-neutral-500 font-black uppercase mb-1">Preu Estimació</p>
+                <p id="totalPrice" class="text-3xl font-black text-green-500">0.00 €</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- Mapa d'importacions per Three.js i Firebase -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "firebase/app": "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js",
+                "firebase/auth": "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js",
+                "firebase/firestore": "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { initializeApp } from 'firebase/app';
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+        import { getFirestore, collection, addDoc, query, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+
+        // COMPROVACIÓ DE SEGURETAT PER GITHUB PAGES O ALTRES ENTORNS
+        let app, auth, db;
+        try {
+            if (typeof __firebase_config !== 'undefined') {
+                const firebaseConfig = JSON.parse(__firebase_config);
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+            } else {
+                console.warn("No s'ha trobat configuració de Firebase. S'executarà en mode local (ideal per GitHub Pages).");
+            }
+        } catch (error) {
+            console.warn("Error inicialitzant Firebase, executant en mode offline:", error);
+        }
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'brick-builder-pro';
+        let user = null;
+
+        // Constants del sistema de quadrícula LEGO
+        const GRID_SIZE = 0.8;
+        const BRICK_HEIGHT = 0.96;
+        const PLATE_HEIGHT = 0.32;
+        const COLORS = ['#ef4444', '#3b82f6', '#eab308', '#22c55e', '#f5f5f5', '#171717', '#9333ea', '#737373'];
+
+        const BRICK_LIBRARY = [
+            // Bricks 1xN
+            { id: '3005', name: 'Brick 1 x 1', dim: [1, 1, 1], type: 'brick', cat: 'bricks', price: 0.05 },
+            { id: '3004', name: 'Brick 1 x 2', dim: [1, 1, 2], type: 'brick', cat: 'bricks', price: 0.08 },
+            { id: '3622', name: 'Brick 1 x 3', dim: [1, 1, 3], type: 'brick', cat: 'bricks', price: 0.10 },
+            { id: '3010', name: 'Brick 1 x 4', dim: [1, 1, 4], type: 'brick', cat: 'bricks', price: 0.12 },
+            { id: '3009', name: 'Brick 1 x 6', dim: [1, 1, 6], type: 'brick', cat: 'bricks', price: 0.18 },
+            
+            // Bricks 2xN
+            { id: '3003', name: 'Brick 2 x 1', dim: [2, 1, 1], type: 'brick', cat: 'bricks', price: 0.08 },
+            { id: '3003b', name: 'Brick 2 x 2', dim: [2, 1, 2], type: 'brick', cat: 'bricks', price: 0.12 },
+            { id: '3002', name: 'Brick 2 x 3', dim: [2, 1, 3], type: 'brick', cat: 'bricks', price: 0.15 },
+            { id: '3001', name: 'Brick 2 x 4', dim: [2, 1, 4], type: 'brick', cat: 'bricks', price: 0.20 },
+            { id: '2456', name: 'Brick 2 x 6', dim: [2, 1, 6], type: 'brick', cat: 'bricks', price: 0.30 },
+
+            // Technic Bricks (amb forats)
+            { id: '6541', name: 'Technic 1x1 Hole', dim: [1, 1, 1], type: 'technic', cat: 'technic', price: 0.08 },
+            { id: '3700', name: 'Technic 1x2 Holes', dim: [1, 1, 2], type: 'technic', cat: 'technic', price: 0.10 },
+            { id: '3700b', name: 'Technic 1x3 Holes', dim: [1, 1, 3], type: 'technic', cat: 'technic', price: 0.12 },
+            { id: '3701', name: 'Technic 1x4 Holes', dim: [1, 1, 4], type: 'technic', cat: 'technic', price: 0.15 },
+            { id: '3894', name: 'Technic 1x6 Holes', dim: [1, 1, 6], type: 'technic', cat: 'technic', price: 0.22 },
+
+            // Plates 1xN
+            { id: '3024', name: 'Plate 1 x 1', dim: [1, 0.33, 1], type: 'plate', cat: 'plates', price: 0.03 },
+            { id: '3023', name: 'Plate 1 x 2', dim: [1, 0.33, 2], type: 'plate', cat: 'plates', price: 0.04 },
+            { id: '3623', name: 'Plate 1 x 3', dim: [1, 0.33, 3], type: 'plate', cat: 'plates', price: 0.05 },
+            { id: '3710', name: 'Plate 1 x 4', dim: [1, 0.33, 4], type: 'plate', cat: 'plates', price: 0.06 },
+            { id: 'plate15', name: 'Plate 1 x 5', dim: [1, 0.33, 5], type: 'plate', cat: 'plates', price: 0.08 },
+            { id: '3666', name: 'Plate 1 x 6', dim: [1, 0.33, 6], type: 'plate', cat: 'plates', price: 0.09 },
+
+            // Plates 2xN
+            { id: '3022', name: 'Plate 2 x 2', dim: [2, 0.33, 2], type: 'plate', cat: 'plates', price: 0.06 },
+            { id: '3021', name: 'Plate 2 x 3', dim: [2, 0.33, 3], type: 'plate', cat: 'plates', price: 0.08 },
+            { id: '3020', name: 'Plate 2 x 4', dim: [2, 0.33, 4], type: 'plate', cat: 'plates', price: 0.10 },
+            { id: 'plate25', name: 'Plate 2 x 5', dim: [2, 0.33, 5], type: 'plate', cat: 'plates', price: 0.12 },
+            { id: '3795', name: 'Plate 2 x 6', dim: [2, 0.33, 6], type: 'plate', cat: 'plates', price: 0.15 },
+
+            // Plate 4x4
+            { id: '3031', name: 'Plate 4 x 4', dim: [4, 0.33, 4], type: 'plate', cat: 'plates', price: 0.25 },
+
+            // Eixos i Rodes
+            { id: '3705', name: 'Axle 3', dim: [1, 1, 3], type: 'axle', cat: 'axles', price: 0.07 },
+            { id: '3706', name: 'Axle 4', dim: [1, 1, 4], type: 'axle', cat: 'axles', price: 0.09 },
+            { id: 'wheel-t', name: 'Technic Wheel', dim: [2, 2, 1], type: 'wheel', cat: 'axles', price: 0.30 }
+        ];
+
+        let scene, camera, renderer, controls, raycaster, mouse;
+        let placedBricks = [];
+        
+        // Array per la selecció múltiple
+        let selectedBricks = [];
+        
+        let isDragging = false;
+        let dragPlane = new THREE.Plane();
+        
+        // Mapes per mantenir l'offset de cada peça durant l'arrossegament en grup
+        let dragOffsets = new Map(); 
+        
+        let intersection = new THREE.Vector3();
+        let currentCategory = 'totes';
+        let baseplate = null;
+
+        async function init() {
+            // Inicialització segura de l'Auth
+            if (auth) {
+                const initAuth = async () => {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                };
+                await initAuth();
+                onAuthStateChanged(auth, (u) => { user = u; if(user) setupInventoryListener(); });
+            }
+
+            // Configuració de l'escena amb fons fosc
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050505);
+            camera = new THREE.PerspectiveCamera(45, (window.innerWidth - 320) / window.innerHeight, 0.1, 1000);
+            camera.position.set(10, 10, 10);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth - 320, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('canvasContainer').appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+            const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+            sun.position.set(10, 20, 10);
+            sun.castShadow = true;
+            scene.add(sun);
+
+            // Grid helper alineat
+            scene.add(new THREE.GridHelper(40, 50, 0x222222, 0x111111));
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            initLibrary();
+            initColorPicker();
+            initFilters();
+            
+            window.addEventListener('resize', onResize);
+            renderer.domElement.addEventListener('mousedown', onMouseDown);
+            renderer.domElement.addEventListener('mousemove', onMouseMove);
+            renderer.domElement.addEventListener('mouseup', onMouseUp);
+            window.addEventListener('keydown', onKeyDown);
+
+            document.getElementById('saveBtn').onclick = saveProject;
+            animate();
+        }
+
+        function createBrickGeometry(data) {
+            const group = new THREE.Group();
+            const mat = new THREE.MeshStandardMaterial({ color: data.color, roughness: 0.2, metalness: 0.1 });
+            
+            let h = (data.type === 'brick' || data.type === 'technic') ? BRICK_HEIGHT : PLATE_HEIGHT;
+            let w = data.dim[0] * GRID_SIZE - 0.04;
+            let d = data.dim[2] * GRID_SIZE - 0.04;
+
+            if (data.type === 'axle') {
+                const axleLen = data.dim[2] * GRID_SIZE;
+                const crossSize = 0.24;
+                const bar1 = new THREE.Mesh(new THREE.BoxGeometry(crossSize, 0.08, axleLen), mat);
+                const bar2 = new THREE.Mesh(new THREE.BoxGeometry(0.08, crossSize, axleLen), mat);
+                group.add(bar1, bar2);
+                h = crossSize;
+            } 
+            else if (data.type === 'wheel') {
+                const wheelRadius = 0.75; 
+                const wheelThickness = 0.6;
+                const wheelGeo = new THREE.CylinderGeometry(wheelRadius, wheelRadius, wheelThickness, 32);
+                const wheelMesh = new THREE.Mesh(wheelGeo, mat);
+                wheelMesh.rotation.x = Math.PI / 2;
+                group.add(wheelMesh);
+
+                const holeVisGeo = new THREE.CylinderGeometry(0.22, 0.22, wheelThickness + 0.1, 16);
+                const holeVis = new THREE.Mesh(holeVisGeo, new THREE.MeshStandardMaterial({color: 0x000000}));
+                holeVis.rotation.x = Math.PI/2;
+                group.add(holeVis);
+
+                const holeMarker = new THREE.Object3D();
+                holeMarker.name = "technicHole";
+                holeMarker.userData.isHole = true;
+                group.add(holeMarker);
+                h = wheelRadius * 2;
+            } 
+            else {
+                const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+                body.castShadow = true; body.receiveShadow = true;
+                group.add(body);
+                
+                if (data.type === 'technic') {
+                    for(let i = 0; i < data.dim[2]; i++) {
+                        const holeMarker = new THREE.Object3D();
+                        holeMarker.position.set(0, 0, (i - (data.dim[2]-1)/2) * GRID_SIZE);
+                        holeMarker.userData.isHole = true;
+                        holeMarker.name = "technicHole";
+                        group.add(holeMarker);
+
+                        const holeVisGeo = new THREE.CylinderGeometry(0.2, 0.2, w + 0.2, 16);
+                        const holeVis = new THREE.Mesh(holeVisGeo, new THREE.MeshStandardMaterial({color: 0x000000}));
+                        holeVis.rotation.z = Math.PI/2;
+                        holeVis.position.copy(holeMarker.position);
+                        group.add(holeVis);
+                    }
+                }
+
+                const studGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.12, 12);
+                for(let x = 0; x < data.dim[0]; x++) {
+                    for(let z = 0; z < data.dim[2]; z++) {
+                        const stud = new THREE.Mesh(studGeo, mat);
+                        stud.position.set((x - (data.dim[0]-1)/2) * GRID_SIZE, h/2 + 0.06, (z - (data.dim[2]-1)/2) * GRID_SIZE);
+                        group.add(stud);
+                    }
+                }
+            }
+            
+            group.userData = { ...data, actualH: h, instanceId: Math.random() };
+            return group;
+        }
+
+        // Petjada (AABB) 2D d'una peça per a col·lisions perfectes
+        function getXZBounds(brick) {
+            if (brick === baseplate) {
+                return {
+                    minX: -16 * GRID_SIZE, maxX: 16 * GRID_SIZE,
+                    minZ: -16 * GRID_SIZE, maxZ: 16 * GRID_SIZE,
+                    topY: 0
+                };
+            }
+            let w = brick.userData.dim[0] * GRID_SIZE;
+            let d = brick.userData.dim[2] * GRID_SIZE;
+            
+            const rotY = Math.abs(Math.round(brick.rotation.y / (Math.PI/2))) % 4;
+            if (rotY === 1 || rotY === 3) { 
+                w = brick.userData.dim[2] * GRID_SIZE; 
+                d = brick.userData.dim[0] * GRID_SIZE; 
+            }
+            
+            const margin = 0.05;
+            return {
+                minX: brick.position.x - w/2 + margin,
+                maxX: brick.position.x + w/2 - margin,
+                minZ: brick.position.z - d/2 + margin,
+                maxZ: brick.position.z + d/2 - margin,
+                topY: brick.position.y + brick.userData.actualH/2
+            };
+        }
+
+        function snapToGrid(obj, forceDrop = true) {
+            // STEP HORITZONTAL: Increment de GRID_SIZE (0.8)
+            const stepH = GRID_SIZE;
+            
+            let effDimX = obj.userData.dim[0];
+            let effDimZ = obj.userData.dim[2];
+            
+            const rotY = Math.abs(Math.round(obj.rotation.y / (Math.PI/2))) % 4;
+            if (rotY === 1 || rotY === 3) {
+                effDimX = obj.userData.dim[2];
+                effDimZ = obj.userData.dim[0];
+            }
+
+            const offsetX = (effDimX % 2 !== 0) ? (stepH / 2) : 0;
+            const offsetZ = (effDimZ % 2 !== 0) ? (stepH / 2) : 0;
+
+            obj.position.x = Math.round((obj.position.x - offsetX) / stepH) * stepH + offsetX;
+            obj.position.z = Math.round((obj.position.z - offsetZ) / stepH) * stepH + offsetZ;
+
+            // Lògica d'eixos (axles) - Snapping especial a forats
+            if (obj.userData.type === 'axle') {
+                let bestHolePos = null;
+                let minDistXZ = 1.0; // Distància horitzontal tolerada (ignorant alçada)
+
+                placedBricks.forEach(other => {
+                    if (other === obj) return;
+                    other.updateMatrixWorld();
+                    other.children.forEach(child => {
+                        if (child.userData.isHole) {
+                            const holeWorldPos = new THREE.Vector3();
+                            child.getWorldPosition(holeWorldPos);
+                            
+                            // Calculem la distància només en 2D (X i Z) 
+                            const dx = obj.position.x - holeWorldPos.x;
+                            const dz = obj.position.z - holeWorldPos.z;
+                            const distXZ = Math.sqrt(dx*dx + dz*dz);
+                            
+                            if (distXZ < minDistXZ) {
+                                minDistXZ = distXZ;
+                                bestHolePos = holeWorldPos.clone();
+                            }
+                        }
+                    });
+                });
+
+                if (bestHolePos) {
+                    obj.position.copy(bestHolePos);
+                    return; 
+                }
+            }
+
+            // NOVA LÒGICA: Snapping de Rodes (wheels) connectant-se a Eixos (axles)
+            if (obj.userData.type === 'wheel') {
+                let bestAxlePos = null;
+                let minDistXZ = 1.2; // Tolerància horitzontal per detectar l'eix
+
+                placedBricks.forEach(other => {
+                    if (other === obj) return;
+                    if (other.userData.type === 'axle') {
+                        
+                        // Calculem la distància només en 2D (X i Z) ignorant la diferència d'alçada
+                        const dx = obj.position.x - other.position.x;
+                        const dz = obj.position.z - other.position.z;
+                        const distXZ = Math.sqrt(dx*dx + dz*dz);
+                        
+                        if (distXZ < minDistXZ) {
+                            minDistXZ = distXZ;
+                            bestAxlePos = other.position.clone();
+                        }
+                    }
+                });
+
+                if (bestAxlePos) {
+                    // Si detectem un eix a prop (en l'eix horitzontal), acoblem la roda sencerament a l'eix (inclos l'alçada Y)
+                    obj.position.copy(bestAxlePos);
+                    return; // Si es connecta a l'eix, evitem que caigui cap a terra
+                }
+            }
+
+            // SNAP VERTICAL AMB AABB (Permet apilar peces grans sobre petites)
+            if (forceDrop) {
+                let groundY = 0; 
+                const myBounds = getXZBounds(obj);
+                
+                const others = placedBricks.filter(b => b !== obj);
+                if(baseplate) others.push(baseplate);
+
+                others.forEach(other => {
+                    const otherBounds = getXZBounds(other);
+                    // Comprovar intersecció 2D
+                    if (myBounds.maxX > otherBounds.minX && myBounds.minX < otherBounds.maxX &&
+                        myBounds.maxZ > otherBounds.minZ && myBounds.minZ < otherBounds.maxZ) {
+                        
+                        if (otherBounds.topY > groundY) {
+                            groundY = otherBounds.topY;
+                        }
+                    }
+                });
+                
+                obj.position.y = groundY + obj.userData.actualH/2;
+            } else {
+                // Simplement ajustar a l'increment d'alçada de la graella sense caure
+                obj.position.y = Math.round(obj.position.y / PLATE_HEIGHT) * PLATE_HEIGHT;
+            }
+        }
+
+        function createBrick(data) {
+            const brick = createBrickGeometry(data);
+            brick.position.set(0, 2, 0); 
+            scene.add(brick);
+            placedBricks.push(brick);
+            toggleSelection(brick, false);
+            snapToGrid(brick, true); 
+            updateUI();
+        }
+
+        // Sistema de Selecció Múltiple
+        function toggleSelection(obj, multi = false) {
+            if (!multi) {
+                if (selectedBricks.includes(obj)) return; // Si ja està seleccionat, permet arrossegar el grup
+                deselectAll();
+                selectedBricks.push(obj);
+                highlightBrick(obj, true);
+            } else {
+                const idx = selectedBricks.indexOf(obj);
+                if (idx > -1) {
+                    // Deseleccionar aquesta peça
+                    highlightBrick(obj, false);
+                    selectedBricks.splice(idx, 1);
+                } else {
+                    // Afegir a la selecció
+                    selectedBricks.push(obj);
+                    highlightBrick(obj, true);
+                }
+            }
+            updateSelectionPanel();
+        }
+
+        function highlightBrick(obj, select) {
+            obj.traverse(c => { 
+                if(c.isMesh) { 
+                    if(select) {
+                        c.userData.oldEmissive = c.material.emissive?.clone(); 
+                        if(c.material.emissive) c.material.emissive.set(0x333333); 
+                    } else {
+                        if(c.material.emissive) c.material.emissive.set(0x000000);
+                    }
+                } 
+            });
+        }
+
+        function deselectAll() {
+            selectedBricks.forEach(b => highlightBrick(b, false));
+            selectedBricks = [];
+            updateSelectionPanel();
+        }
+
+        function updateSelectionPanel() {
+            const panel = document.getElementById('selectionPanel');
+            if (selectedBricks.length === 0) {
+                panel.classList.add('hidden');
+            } else if (selectedBricks.length === 1) {
+                panel.classList.remove('hidden');
+                document.getElementById('selPreview').style.backgroundColor = selectedBricks[0].userData.color;
+                document.getElementById('selName').innerText = selectedBricks[0].userData.name;
+            } else {
+                panel.classList.remove('hidden');
+                document.getElementById('selPreview').style.backgroundColor = '#999';
+                document.getElementById('selName').innerText = `${selectedBricks.length} peces seleccionades`;
+            }
+        }
+
+        function onMouseDown(e) {
+            if (e.button !== 0) return; // Només clic esquerre
+            const isMulti = e.ctrlKey || e.metaKey;
+
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(placedBricks, true);
+            
+            if(intersects.length > 0) {
+                let obj = intersects[0].object;
+                while(obj.parent && !obj.userData.instanceId) obj = obj.parent;
+                
+                if (obj === baseplate) {
+                    if(!isMulti) deselectAll();
+                    return;
+                }
+
+                toggleSelection(obj, isMulti);
+                isDragging = true; 
+                controls.enabled = false;
+                
+                // Preparar arrossegament de tot el grup
+                dragPlane.setFromNormalAndCoplanarPoint(new THREE.Vector3(0, 1, 0), obj.position);
+                if(raycaster.ray.intersectPlane(dragPlane, intersection)) {
+                    dragOffsets.clear();
+                    selectedBricks.forEach(b => {
+                        dragOffsets.set(b, new THREE.Vector3().copy(intersection).sub(b.position));
+                    });
+                }
+            } else {
+                if(!isMulti) deselectAll();
+            }
+        }
+
+        function onMouseMove(e) {
+            if(!isDragging || selectedBricks.length === 0) return;
+            const rect = renderer.domElement.getBoundingClientRect();
+            mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+            mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            
+            if(raycaster.ray.intersectPlane(dragPlane, intersection)) {
+                // Ordenar per alçada (de baix a dalt) perquè les peces superiors detectin bé el terra al caure juntes
+                const sortedGroup = [...selectedBricks].sort((a, b) => a.position.y - b.position.y);
+                
+                sortedGroup.forEach(brick => {
+                    const offset = dragOffsets.get(brick);
+                    if (offset) {
+                        brick.position.x = intersection.x - offset.x;
+                        brick.position.z = intersection.z - offset.z;
+                        snapToGrid(brick, true);
+                    }
+                });
+            }
+        }
+
+        function onMouseUp() { isDragging = false; controls.enabled = true; }
+
+        function onKeyDown(e) {
+            if(selectedBricks.length === 0) {
+                if(e.key.toLowerCase() === 'm') toggleBaseplate();
+                return;
+            }
+            if(e.key.toLowerCase() === 'r') { selectedBricks.forEach(b => { b.rotation.y += Math.PI/2; snapToGrid(b, true); }); }
+            if(e.key.toLowerCase() === 'x') { selectedBricks.forEach(b => { b.rotation.x += Math.PI/2; snapToGrid(b, true); }); }
+            if(e.key === 'Delete' || e.key === 'Backspace') deleteSelected();
+            
+            // Moviment vertical: posem forceDrop=false perquè no caiguin i flotin a l'aire si cal
+            if(e.key === 'ArrowUp') { selectedBricks.forEach(b => { b.position.y += PLATE_HEIGHT; snapToGrid(b, false); }); }
+            if(e.key === 'ArrowDown') { selectedBricks.forEach(b => { b.position.y -= PLATE_HEIGHT; snapToGrid(b, false); }); }
+        }
+
+        function toggleBaseplate() {
+            if (baseplate) { scene.remove(baseplate); baseplate = null; document.getElementById('baseplateStatus').classList.remove('active'); }
+            else {
+                const geo = new THREE.BoxGeometry(32 * GRID_SIZE, 0.1, 32 * GRID_SIZE);
+                const mat = new THREE.MeshStandardMaterial({ color: 0x1b4332 });
+                baseplate = new THREE.Mesh(geo, mat); 
+                baseplate.position.y = -0.05; 
+                scene.add(baseplate);
+                document.getElementById('baseplateStatus').classList.add('active');
+            }
+        }
+
+        function initLibrary() {
+            const container = document.getElementById('brickLibrary');
+            container.innerHTML = '';
+            const filtered = currentCategory === 'totes' ? BRICK_LIBRARY : BRICK_LIBRARY.filter(b => b.cat === currentCategory);
+            filtered.forEach(brick => {
+                const btn = document.createElement('button');
+                btn.className = 'flex flex-col items-center p-3 bg-neutral-800 rounded-xl hover:bg-neutral-700 border border-transparent hover:border-blue-500';
+                btn.onclick = () => createBrick({...brick, color: COLORS[1]});
+                btn.innerHTML = `<div class="w-full h-8 rounded mb-2 bg-blue-500/10 flex items-center justify-center text-blue-400"><i class="fas ${brick.type === 'axle' ? 'fa-arrows-alt-v' : (brick.type === 'wheel' ? 'fa-dharmachakra' : 'fa-cube')}"></i></div><span class="text-[9px] font-bold text-neutral-300 truncate w-full">${brick.name}</span>`;
+                container.appendChild(btn);
+            });
+        }
+
+        function initColorPicker() {
+            const container = document.getElementById('colorPicker');
+            container.innerHTML = '';
+            COLORS.forEach(color => {
+                const dot = document.createElement('div');
+                dot.className = 'color-dot'; dot.style.backgroundColor = color;
+                dot.onclick = () => {
+                    if(selectedBricks.length > 0) {
+                        selectedBricks.forEach(b => {
+                            b.userData.color = color;
+                            b.traverse(c => { if(c.isMesh && c.material.color) c.material.color.set(color); });
+                        });
+                        if (selectedBricks.length === 1) {
+                            document.getElementById('selPreview').style.backgroundColor = color;
+                        }
+                    }
+                }; 
+                container.appendChild(dot);
+            });
+        }
+
+        function initFilters() {
+            document.querySelectorAll('.category-pill').forEach(pill => {
+                pill.onclick = () => {
+                    document.querySelector('.category-pill.active').classList.remove('active');
+                    pill.classList.add('active'); currentCategory = pill.dataset.cat; initLibrary();
+                };
+            });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function onResize() {
+            camera.aspect = (window.innerWidth - 320) / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth - 320, window.innerHeight);
+        }
+
+        function updateUI() {
+            const total = placedBricks.reduce((acc, b) => acc + (b.userData.price || 0), 0);
+            document.getElementById('totalPrice').innerText = `${total.toFixed(2)} €`;
+        }
+
+        window.deleteSelected = () => {
+            if(selectedBricks.length === 0) return;
+            selectedBricks.forEach(b => {
+                scene.remove(b);
+                placedBricks = placedBricks.filter(pb => pb !== b);
+            });
+            deselectAll(); 
+            updateUI();
+        };
+
+        window.switchTab = (tab) => {
+            document.getElementById('tabLibrary').classList.toggle('hidden', tab !== 'library');
+            document.getElementById('tabInventory').classList.toggle('hidden', tab !== 'inventory');
+        };
+
+        // Funcions preparades per si en un futur les vols connectar amb Firebase
+        async function saveProject() { alert('Funció de guardar disponible només amb backend actiu.'); }
+        function setupInventoryListener() { }
+
+        init();
+    </script>
+</body>
+</html>
